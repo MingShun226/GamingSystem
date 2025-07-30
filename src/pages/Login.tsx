@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,8 +14,88 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [autoFillMessage, setAutoFillMessage] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Decryption function to match the encryption in n8n
+  const decryptPassword = (encryptedPassword: string): string | null => {
+    try {
+      // Step 1: Base64 decode
+      const step1 = atob(encryptedPassword);
+      
+      // Step 2: Reverse Caesar cipher (shift back by 3)
+      let decrypted = '';
+      for (let i = 0; i < step1.length; i++) {
+        let char = step1.charCodeAt(i);
+        // Reverse shift for printable ASCII characters
+        if (char >= 32 && char <= 126) {
+          char = ((char - 32 - 3 + 95) % 95) + 32;
+        }
+        decrypted += String.fromCharCode(char);
+      }
+      
+      // Step 3: Base64 decode again to get original password
+      return atob(decrypted);
+    } catch (error) {
+      console.error('Decryption error:', error);
+      return null;
+    }
+  };
+
+  // Auto-fill functionality when page loads
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoUsername = urlParams.get('username');
+    const encryptedToken = urlParams.get('token');
+    const legacyPassword = urlParams.get('password'); // Fallback for old links
+    
+    if (autoUsername && (encryptedToken || legacyPassword)) {
+      let autoPassword: string | null = null;
+      
+      if (encryptedToken) {
+        // Decrypt the password from the token
+        autoPassword = decryptPassword(encryptedToken);
+        console.log('🔓 Password decrypted from secure token');
+      } else if (legacyPassword) {
+        // Fallback for old non-encrypted links
+        autoPassword = legacyPassword;
+        console.log('⚠️ Using legacy password parameter');
+      }
+      
+      if (autoPassword) {
+        // Auto-fill the form fields
+        setUsername(autoUsername);
+        setPassword(autoPassword);
+        
+        // Show success message
+        setAutoFillMessage('🎉 Welcome! Your credentials have been auto-filled. Just click Sign In!');
+        
+        // Clear URL parameters after auto-fill to hide sensitive data
+        setTimeout(() => {
+          if (window.history && window.history.replaceState) {
+            const urlWithoutParams = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, urlWithoutParams);
+          }
+        }, 2000);
+        
+        console.log('✅ Auto-fill successful');
+      } else {
+        console.error('❌ Failed to decrypt password');
+        setAutoFillMessage('🔒 Invalid secure link. Please enter credentials manually.');
+      }
+    }
+  }, []);
+
+  // Clear auto-fill message after 5 seconds
+  useEffect(() => {
+    if (autoFillMessage) {
+      const timer = setTimeout(() => {
+        setAutoFillMessage('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFillMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +187,17 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gaming-dark flex items-center justify-center p-4">
+      {/* Auto-fill notification */}
+      {autoFillMessage && (
+        <div className={`fixed top-5 right-5 p-4 rounded-lg font-bold z-50 max-w-sm text-white shadow-lg transition-all duration-300 ${
+          autoFillMessage.includes('🎉') 
+            ? 'bg-gradient-to-r from-green-600 to-emerald-600' 
+            : 'bg-gradient-to-r from-red-600 to-red-700'
+        }`}>
+          {autoFillMessage}
+        </div>
+      )}
+      
       <div className="w-full max-w-md">
         {/* Back Button */}
         <Button
